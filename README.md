@@ -15,7 +15,7 @@ O trabalho está dividido em quatro partes que se encadeiam:
 3. **Detecção de anomalias** com *DBSCAN*, identificando janelas que fogem dos perfis típicos.
 4. **Previsão de volume** com um modelo *SARIMA*, usado como fonte paramétrica do número de requisições por hora.
 
-No fim, o gerador (`gerador_log.py`) combina a previsão do *SARIMA* com os perfis do *K-Means* para produzir registros sintéticos no formato AOL (`AnonID`, `Query`, `QueryTime`, `ItemRank`, `ClickURL`).
+No fim, o gerador (`01_gerador_log.py`) combina a previsão do *SARIMA* com os perfis do *K-Means* para produzir registros sintéticos no formato AOL (`AnonID`, `Query`, `QueryTime`, `ItemRank`, `ClickURL`).
 
 ## Conjunto de dados
 
@@ -33,8 +33,9 @@ Os *scripts* foram pensados para rodar nesta ordem. Cada etapa lê o arquivo ger
 | Script | O que faz |
 |--------|-----------|
 | `converter.py` | Converte o arquivo `.txt` original para CSV, validando o formato de cada linha. |
-| `clean_csv.py` | Remove linhas inválidas e duplicatas (registros idênticos e mesmo usuário no mesmo instante). |
-| `remove_incomplete.py` | Descarta dias com cobertura menor que 18 horas, para não distorcer a análise temporal. |
+| `01_clean_csv.py` | Remove linhas inválidas e duplicatas (registros idênticos e mesmo usuário no mesmo instante). |
+| `02_remove_incomplete.py` | Descarta dias com cobertura menor que 18 horas, para não distorcer a análise temporal. |
+| `03_week_division.py` | Recorta o subconjunto de treino (março e abril de 2006). |
 
 ### 2. Caracterização
 
@@ -52,10 +53,10 @@ Os *scripts* foram pensados para rodar nesta ordem. Cada etapa lê o arquivo ger
 
 | Script | O que faz |
 |--------|-----------|
-| `features.py` | Monta as *features* por janela horária usadas no agrupamento. |
-| `kmeans.py` | Gera os cinco perfis de carga e as métricas de avaliação (cotovelo e *silhouette*). |
-| `dbscan.py` | Identifica janelas anômalas (ruído) a partir das mesmas *features*. |
-| `analise_perfil_1.py` | Análise detalhada de um perfil específico. |
+| `01_features.py` | Monta as *features* por janela horária usadas no agrupamento. |
+| `02_kmeans.py` | Gera os cinco perfis de carga e as métricas de avaliação (cotovelo e *silhouette*). |
+| `03_dbscan.py` | Identifica janelas anômalas (ruído) a partir das mesmas *features*. |
+| `04_analise_perfil_1.py` | Análise detalhada de um perfil específico. |
 
 ### 4. Previsão com SARIMA
 
@@ -66,7 +67,7 @@ Os *scripts* numerados de `01` a `06` formam a etapa de modelagem da série temp
 | `01_preparar_serie.py` | Monta a série horária e separa treino, validação e teste. |
 | `02_diagnostico_estacionariedade.py` | Testes ADF e KPSS sobre a série e suas diferenciações. |
 | `03_acf_pacf.py` | Gráficos de ACF e PACF para apoiar a escolha das ordens. |
-| `04_ajustar_modelos_validacao.py` | Ajuste dos modelos candidatos e comparação na validação. |
+| `04_ajustar_modelos_otimizado.py` | Ajuste dos modelos candidatos e comparação na validação. |
 | `05_treinar_melhor_modelo.py` | Treino do modelo escolhido e avaliação no teste, com *baselines*. |
 | `06_previsoes.py` | Previsão para o horizonte futuro. |
 
@@ -74,7 +75,8 @@ Os *scripts* numerados de `01` a `06` formam a etapa de modelagem da série temp
 
 | Script | O que faz |
 |--------|-----------|
-| `gerador_log.py` | Gera o *log* sintético combinando a previsão do *SARIMA* com os perfis do *K-Means*. |
+| `01_gerador_log.py` | Gera o *log* sintético combinando a previsão do *SARIMA* com os perfis do *K-Means*. |
+| `02_comparar_log_sintetico.py` | Compara o *log* sintético com o observado (qui-quadrado e V de Cramér). |
 
 ## Como executar
 
@@ -99,24 +101,25 @@ Com o arquivo bruto do AOL já na pasta de dados, a sequência é:
 
 ```bash
 python converter.py
-python clean_csv.py
-python remove_incomplete.py
-python features.py
-python kmeans.py
-python dbscan.py
+python 01_clean_csv.py
+python 02_remove_incomplete.py
+python 03_week_division.py
+python 01_features.py
+python 02_kmeans.py
+python 03_dbscan.py
 python 01_preparar_serie.py
 python 02_diagnostico_estacionariedade.py
 python 03_acf_pacf.py
-python 04_ajustar_modelos_validacao.py
+python 04_ajustar_modelos_otimizado.py
 python 05_treinar_melhor_modelo.py
 python 06_previsoes.py
-python gerador_log.py
+python 01_gerador_log.py
 ```
 
 O gerador aceita dois parâmetros opcionais:
 
 ```bash
-python gerador_log.py --forecast caminho/para/previsao.csv --saida caminho/para/log_sintetico.csv
+python 01_gerador_log.py --forecast caminho/para/previsao.csv --saida caminho/para/log_sintetico.csv
 ```
 
 O arquivo de previsão precisa ter as colunas `window_start` e `forecast_sarima` (ou equivalente). Por padrão, o gerador usa a previsão do *SARIMA* para o conjunto de teste. Para gerar o *log* de uma única faixa de hora, basta criar um CSV com essa mesma estrutura.
@@ -125,20 +128,35 @@ Além do *log* em si, o gerador salva um arquivo de validação que reconstrói 
 
 ## Estrutura esperada das pastas
 
-Os *scripts* usam caminhos relativos e assumem uma organização parecida com esta:
+Cada *script* resolve os caminhos a partir de uma pasta chamada `AOL Query Log` (localizada automaticamente a partir do próprio arquivo). As pastas `data/` e `results/` **não fazem parte deste repositório**: o arquivo do AOL deve ser colocado em `data/raw/`, e `results/` é criada conforme os *scripts* rodam.
 
 ```
 AOL Query Log/
-├── raw data/                 # arquivo .txt original do AOL
-├── processed/                # CSVs limpos
-├── outputs txt/              # resumos em texto das etapas
-├── analise_treino/           # caracterização e perfis (subconjunto de treino)
-│   ├── features/
-│   └── perfis_carga_kmeans/
-├── analise_completa/         # série temporal completa
-│   └── sarima/
-├── log_sintetico/            # saída do gerador
-└── scripts/                  # os scripts deste repositório
+├── data/
+│   ├── raw/                  # arquivo original do AOL (baixado à parte)
+│   └── processed/            # CSVs limpos gerados pela etapa de limpeza
+├── results/                  # todas as saídas, criadas ao rodar os scripts
+│   ├── limpeza/
+│   ├── treino/               # caracterização e perfis (subconjunto de treino)
+│   │   ├── caracterizacao/
+│   │   ├── features/
+│   │   ├── perfis_kmeans/
+│   │   ├── anomalias_dbscan/
+│   │   └── sarima_perfil_1/
+│   ├── completo/             # série temporal completa
+│   │   └── sarima/
+│   ├── log_sintetico/        # saída do gerador
+│   └── plots/                # figuras geradas pelos scripts
+└── scripts/                  # o código deste repositório
+    ├── 1_limpeza/
+    ├── 2_caracterizacao/
+    ├── 3_perfis/
+    ├── 4_sarima/
+    │   └── perfil_1/
+    ├── 5_gerador/
+    ├── plots/
+    ├── utils/
+    └── archive/              # versões antigas (referência)
 ```
 
 Os caminhos podem ser ajustados no início de cada *script*, nas variáveis de configuração.
